@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radar de licitações de tecnologia</title>
+<style>
+:root{--bg:#eef2f5;--panel:#fff;--ink:#1b2430;--mute:#5b6775;--line:#d5dde4;--acc:#a35a0b;--warn:#b42318}
+@media(prefers-color-scheme:dark){:root{--bg:#141a21;--panel:#1d2530;--ink:#e8edf2;--mute:#9aa7b4;--line:#2d3947;--acc:#f0a85a;--warn:#ff8a7a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:clamp(26px,5vw,38px);margin:0 0 6px}
+.sub{color:var(--mute);margin:0 0 20px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.stat b{font-size:28px;display:block;line-height:1.2}
+.stat span{color:var(--mute);font-size:14px}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+label{display:grid;gap:4px;font-size:14px;color:var(--mute)}
+input,select,button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+button{cursor:pointer}
+.pri{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.full{grid-column:1/-1}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+#status{color:var(--mute);margin:10px 0}
+#status.err{color:var(--warn)}
+.filtros{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.filtros input{flex:1 1 220px}
+.item{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--acc);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+.item h2{font-size:17px;margin:0 0 6px}
+.meta{color:var(--mute);font-size:14px;display:flex;flex-wrap:wrap;gap:4px 16px}
+.meta .w{color:var(--warn);font-weight:600}
+.item a{color:var(--acc);font-weight:600;font-size:14px}
+</style>
+</head>
+<body>
+<main>
+<h1>Radar de licitações de tecnologia</h1>
+<p class="sub">Licitações abertas no PNCP para empresas e consultores de tecnologia, consultadas ao vivo.</p>
+
+<div class="stats" id="stats"></div>
+
+<form id="f">
+<label>Estado (UF)<select name="uf" id="uf"><option value="">Todos</option></select></label>
+<label>Modalidade
+<select name="mod">
+<option value="4,6,8,12">Principais (pregão, concorrência, dispensa, credenciamento)</option>
+<option value="6">Pregão eletrônico</option>
+<option value="4">Concorrência eletrônica</option>
+<option value="8">Dispensa</option>
+<option value="12">Credenciamento</option>
+<option value="5">Concorrência presencial</option>
+<option value="7">Pregão presencial</option>
+</select></label>
+<label>Propostas abertas até (dias a partir de hoje)<input type="number" name="dias" value="60" min="1" max="365"></label>
+<label>Páginas por modalidade (50 registros cada)<input type="number" name="paginas" value="5" min="1" max="40"></label>
+<label class="full">Palavras-chave (separe por vírgula; \b marca palavra inteira)
+<input name="termos" value="software, sistema de informação, tecnologia da informação, \bti\b, \btic\b, nuvem, cibernético, segurança da informação, inteligência artificial, banco de dados, transformação digital"></label>
+<div class="full row"><button class="pri" type="submit" id="go">Buscar no PNCP</button></div>
+</form>
+
+<div id="status" role="status"></div>
+<div class="filtros">
+<input type="search" id="q" placeholder="Filtrar resultados por texto ou órgão" aria-label="Filtrar">
+<select id="fp" aria-label="Para quem"><option value="">Empresas e consultores</option><option value="empresa">Empresas</option><option value="consultor">Consultores</option></select>
+</div>
+<div id="out"></div>
+</main>
+<script>
+var UFS="AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO".split(" ");
+UFS.forEach(function(u){var o=document.createElement("option");o.value=u;o.textContent=u;document.getElementById("uf").appendChild(o)});
+var itens=[];
+function esc(t){return String(t||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function st(m,e){var s=document.getElementById("status");s.textContent=m;s.className=e?"err":""}
+function dias(p){if(!p)return null;var h=new Date();h.setHours(0,0,0,0);return Math.round((new Date(p+"T00:00:00")-h)/864e5)}
+function brl(v){return v?v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}):""}
+function mostrar(){
+var q=document.getElementById("q").value.toLowerCase(),fp=document.getElementById("fp").value;
+var lista=itens.filter(function(i){return(!q||(i.titulo+" "+i.orgao).toLowerCase().indexOf(q)>=0)&&(!fp||i.publico===fp)});
+var e15=0,cons=0;itens.forEach(function(i){var d=dias(i.prazo);if(d!==null&&d<=15)e15++;if(i.publico==="consultor")cons++});
+document.getElementById("stats").innerHTML='<div class="stat"><b>'+itens.length+'</b><span>licitações de tecnologia</span></div><div class="stat"><b>'+e15+'</b><span>encerram em 15 dias</span></div><div class="stat"><b>'+cons+'</b><span>voltadas a consultores</span></div>';
+document.getElementById("out").innerHTML=lista.map(function(i){
+var d=dias(i.prazo),prazo=i.prazo?i.prazo.split("-").reverse().join("/"):"sem data";
+return '<article class="item"><h2>'+esc(i.titulo)+'</h2><div class="meta"><span>'+esc(i.orgao)+'</span><span>'+esc(i.local)+'</span><span class="'+(d!==null&&d<=15?"w":"")+'">Propostas até '+prazo+(d!==null&&d>=0&&d<=15?" (faltam "+d+" dias)":"")+'</span><span>'+esc(i.modalidade)+'</span>'+(i.valor?'<span>'+brl(i.valor)+'</span>':'')+'<span>'+(i.publico==="consultor"?"Consultores":"Empresas")+'</span></div>'+(i.link?'<a href="'+esc(i.link)+'" target="_blank" rel="noopener">Abrir no PNCP</a>':'')+'</article>'}).join("")}
+document.getElementById("f").addEventListener("submit",async function(e){
+e.preventDefault();
+var f=Object.fromEntries(new FormData(e.target)),go=document.getElementById("go"),vistos={},lidos=0;
+itens=[];mostrar();go.disabled=true;
+try{
+var mods=f.mod.split(",");
+for(var m=0;m<mods.length;m++){
+var pag=1,total=1;
+while(pag<=Math.min(total,+f.paginas)){
+st("Modalidade "+(m+1)+" de "+mods.length+", página "+pag+(total>1?" de "+total:"")+"... "+itens.length+" encontradas");
+var p=new URLSearchParams({mod:mods[m],uf:f.uf,dias:f.dias,pagina:pag,termos:f.termos});
+var r=await fetch("/api/pagina?"+p),j=await r.json();
+if(!r.ok)throw new Error(j.erro||"Erro "+r.status);
+lidos+=j.lidos;total=j.totalPaginas;
+j.itens.forEach(function(i){if(!vistos[i.id]){vistos[i.id]=1;itens.push(i)}});
+itens.sort(function(a,b){return(a.prazo||"9999")<(b.prazo||"9999")?-1:1});
+mostrar();pag++}}
+st(itens.length+" licitações de tecnologia, entre "+lidos+" lidas.")
+}catch(err){st(err.message,true)}
+go.disabled=false});
+document.getElementById("q").addEventListener("input",mostrar);
+document.getElementById("fp").addEventListener("input",mostrar);
+mostrar();
+</script>
+</body>
+</html>
